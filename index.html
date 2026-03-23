@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Museum of Memory</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="grain"></div>
+
+  <header>
+    <div class="header-rule"></div>
+    <div class="header-inner">
+      <span class="header-tag">Est. 2025</span>
+      <div class="header-title-block">
+        <h1>The Museum of Memory</h1>
+        <p class="subtitle">every photograph forgets differently</p>
+      </div>
+      <span class="header-tag">Permanent Collection</span>
+    </div>
+    <div class="header-rule"></div>
+  </header>
+
+  <main>
+    <section class="upload-section" id="upload-section">
+      <div class="upload-zone" id="upload-zone">
+        <div class="upload-inner">
+          <div class="upload-icon">
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="5" y="8" width="30" height="24" rx="1" stroke="currentColor" stroke-width="0.75"/>
+              <circle cx="14" cy="17" r="3" stroke="currentColor" stroke-width="0.75"/>
+              <path d="M5 26L14 19L20 24L27 17L35 26" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p class="upload-text">Deposit a photograph</p>
+          <p class="upload-sub">drag & drop or click to browse</p>
+          <p class="upload-formats">jpg · png · webp</p>
+        </div>
+        <input type="file" id="file-input" accept="image/*">
+      </div>
+    </section>
+
+    <section class="studio-section" id="studio-section" style="display:none">
+
+      <div class="canvas-frame">
+        <div class="frame-corner tl"></div>
+        <div class="frame-corner tr"></div>
+        <div class="frame-corner bl"></div>
+        <div class="frame-corner br"></div>
+        <div class="canvas-wrap" id="canvas-wrap">
+          <canvas id="result-canvas"></canvas>
+          <div class="processing-overlay" id="processing-overlay">
+            <span>developing…</span>
+          </div>
+        </div>
+        <div class="canvas-meta">
+          <span class="seed-display" id="seed-display"></span>
+          <span class="dimensions-display" id="dimensions-display"></span>
+        </div>
+      </div>
+
+      <div class="controls-panel">
+        <div class="control-group">
+          <label class="control-label">Decay intensity</label>
+          <div class="slider-row">
+            <input type="range" id="decay-slider" min="0" max="100" value="45">
+            <span class="slider-val" id="decay-val">45%</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Character of forgetting</label>
+          <div class="mode-grid">
+            <button class="mode-btn active" data-mode="organic">Organic fade</button>
+            <button class="mode-btn" data-mode="bleed">Edge bleed</button>
+            <button class="mode-btn" data-mode="lifting">Emulsion lift</button>
+            <button class="mode-btn" data-mode="bleach">Bleach bypass</button>
+            <button class="mode-btn" data-mode="mixed">All forces</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="control-label">Sepia drift</label>
+          <div class="slider-row">
+            <input type="range" id="sepia-slider" min="0" max="100" value="70">
+            <span class="slider-val" id="sepia-val">70%</span>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="action-btn" id="randomize-btn">
+            <span>New seed</span>
+            <svg viewBox="0 0 16 16" fill="none"><path d="M2 8C2 4.686 4.686 2 8 2s6 2.686 6 6-2.686 6-6 6S2 11.314 2 8z" stroke="currentColor" stroke-width="0.75"/><path d="M8 5v3l2 1" stroke="currentColor" stroke-width="0.75" stroke-linecap="round"/></svg>
+          </button>
+          <button class="action-btn" id="upload-another-btn">
+            <span>New photo</span>
+            <svg viewBox="0 0 16 16" fill="none"><path d="M3 10V12h10V10M8 3v6M5 6l3-3 3 3" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="action-btn primary" id="download-btn">
+            <span>Save</span>
+            <svg viewBox="0 0 16 16" fill="none"><path d="M3 10V13h10V10M8 3v7M5 8l3 3 3-3" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-rule"></div>
+    <p>The Museum of Memory — an archive of impermanence</p>
+  </footer>
+
+  <script src="corruption.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

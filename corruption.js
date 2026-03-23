@@ -107,14 +107,27 @@ function corruptBW(data, w, h, seed, rng, nfn) {
 
   const survivalRadius = 0.2 + rng() * 0.4;
   const dissolveWidth  = 0.25 + rng() * 0.45;
-  const noiseScale     = 2.5 + rng() * 5.0;
   const warpS          = 0.5 + rng() * 1.5;
   const noiseWarp      = 0.1 + rng() * 0.2;
-  const contrastBoost  = 0.3 + rng() * 0.5;
-  const grainDensity   = 0.45 + rng() * 0.55;
-  const grainScale     = 0.7 + rng() * 1.4;
 
-  const dustMap = buildDustMap(w, h, rng);
+  // Photocopy contrast: strong curves push collapsing midtones toward black/white
+  const contrastGamma  = 1.4 + rng() * 1.2;   // power curve — higher = more crushed midtones
+  const blackLift      = 0.0 + rng() * 0.08;   // lift blacks slightly (photocopy grey cast)
+  const whiteCrush     = 0.92 + rng() * 0.08;  // compress highlights
+
+  // Tonal noise: integrated into the image, not placed on top
+  // Two layers: coarse (large tonal regions) and fine (halftone breakdown)
+  const coarseScale    = 1.5 + rng() * 2.5;
+  const fineScale      = 8.0 + rng() * 14.0;   // high frequency for halftone feel
+  const tonerNoiseAmp  = 0.12 + rng() * 0.22;  // how much tonal noise in survived areas
+  const boundaryNoiseAmp = 0.35 + rng() * 0.35; // stronger noise at dissolve boundary
+
+  // Dissolve boundary texture: streaky, directional (like toner running out)
+  // Use anisotropic noise — stretched in one axis — for streaky feel
+  const streakAngle    = rng() * Math.PI;
+  const streakCos      = Math.cos(streakAngle), streakSin = Math.sin(streakAngle);
+  const streakStretch  = 3.0 + rng() * 5.0;    // how elongated the streaks are
+  const streakScale    = 3.0 + rng() * 5.0;
 
   for (let py = 0; py < h; py++) {
     const ny = py / h;
@@ -124,65 +137,68 @@ function corruptBW(data, w, h, seed, rng, nfn) {
       let r = data[idx], g = data[idx+1], b = data[idx+2];
 
       // Greyscale
-      const lum = r * 0.299 + g * 0.587 + b * 0.114;
-      r = g = b = lum;
+      let lum = r * 0.299 + g * 0.587 + b * 0.114;
 
-      // Distance from survival origin, domain-warped for organic boundary
+      // Distance from survival origin, domain-warped
       const distRaw = Math.sqrt((nx - originX)**2 + (ny - originY)**2);
       const wx = (fbm(nfn, nx*warpS+7.3, ny*warpS+2.1, 3, lacunarity, rng) + 1) / 2;
       const wy = (fbm(nfn, nx*warpS+3.1, ny*warpS+8.7, 3, lacunarity, rng) + 1) / 2;
       const warpedDist = distRaw + (wx - 0.5) * noiseWarp * 2 + (wy - 0.5) * noiseWarp;
 
-      // Fine particulate noise for the dissolving boundary texture
-      const fn1 = (fbm(nfn, nx*noiseScale,            ny*noiseScale,            6, lacunarity, rng) + 1) / 2;
-      const fn2 = (fbm(nfn, nx*noiseScale*2.3 + 19,   ny*noiseScale*2.3 + 41,   4, lacunarity, rng) + 1) / 2;
-      const boundary = fn1 * 0.6 + fn2 * 0.4;
+      // Streaky anisotropic noise for boundary texture
+      // Rotate coords, then stretch one axis — creates elongated toner-streak shapes
+      const rx = (nx - 0.5) * streakCos - (ny - 0.5) * streakSin;
+      const ry = (nx - 0.5) * streakSin + (ny - 0.5) * streakCos;
+      const sn = (fbm(nfn, rx * streakScale * streakStretch + 31, ry * streakScale + 11, 5, lacunarity, rng) + 1) / 2;
+      const sn2 = (fbm(nfn, rx * streakScale * streakStretch * 0.5 + 73, ry * streakScale * 0.5 + 53, 4, lacunarity, rng) + 1) / 2;
+      const streakMask = sn * 0.6 + sn2 * 0.4;
 
-      // Dissolve field: 0 = survived, 1 = erased
+      // Dissolve field driven by streaky noise
       const distNorm = (warpedDist - survivalRadius) / dissolveWidth;
-      const dissolveField = clamp(distNorm + (boundary - 0.5) * 1.4, 0, 1);
+      const dissolveField = clamp(distNorm + (streakMask - 0.5) * 1.6, 0, 1);
       const eraseAmt = smoothstep(dissolveField);
       const survived = 1 - eraseAmt;
-      const boundaryZone = eraseAmt * survived * 4;
+      const boundaryZone = eraseAmt * survived * 4; // peaks at boundary edge
 
-      // Contrast boost on surviving areas — blacks pushed darker
-      if (survived > 0.02) {
-        const norm = lum / 255;
-        r = g = b = Math.pow(norm, 1 + contrastBoost * survived) * 255;
+      // ── Photocopy contrast treatment on survived areas ──
+      if (survived > 0.01) {
+        let n = lum / 255;
+
+        // 1. Tonal noise integrated into luminance BEFORE threshold
+        //    Coarse noise creates regional tonal variation (uneven toner)
+        const cn = (fbm(nfn, nx*coarseScale+5, ny*coarseScale+17, 4, lacunarity, rng) + 1) / 2;
+        //    Fine noise creates halftone-breakdown texture
+        const fn = (nfn(px * fineScale * 0.01 + (seed & 0xff) * 0.1, py * fineScale * 0.01) + 1) / 2;
+        const tonerNoise = (cn * 0.6 + fn * 0.4 - 0.5) * tonerNoiseAmp * survived;
+        n = clamp(n + tonerNoise, 0, 1);
+
+        // 2. Power curve — collapses midtones, pushes toward black/white
+        n = Math.pow(n, contrastGamma);
+
+        // 3. Black lift + white crush (photocopy doesn't reach true black or white)
+        n = blackLift + n * (whiteCrush - blackLift);
+
+        lum = n * 255;
       }
 
-      // Erase to white
+      // ── Boundary zone: toner running out ──
+      // In the dissolve zone, add streaky tonal noise that pushes lum toward white
+      if (boundaryZone > 0.01) {
+        const bleach = boundaryZone * boundaryNoiseAmp * streakMask;
+        lum = clamp(lum + bleach * 255, 0, 255);
+      }
+
+      r = g = b = lum;
+
+      // ── Erase to white ──
       r = r + (255 - r) * eraseAmt;
       g = g + (255 - g) * eraseAmt;
       b = b + (255 - b) * eraseAmt;
-
-      // Particulate grain — thresholded dark dots, dense at boundary
-      const gn = (nfn(px * grainScale + (seed & 0xff), py * grainScale + ((seed >> 8) & 0xff)) + 1) / 2;
-      const thresh = 1 - grainDensity * (boundaryZone * 0.85 + survived * 0.12);
-      if (gn > thresh) {
-        const str = (gn - thresh) / (1 - thresh);
-        const dark = str * str * 210 * (boundaryZone * 0.75 + survived * 0.18);
-        r = clamp(r - dark, 0, 255);
-        g = clamp(g - dark, 0, 255);
-        b = clamp(b - dark, 0, 255);
-      }
-
-      // Dust
-      const dv = dustMap[py * w + px];
-      if (dv > 0) {
-        r = clamp(r * (1 - dv * 0.8), 0, 255);
-        g = clamp(g * (1 - dv * 0.8), 0, 255);
-        b = clamp(b * (1 - dv * 0.8), 0, 255);
-      }
 
       data[idx] = r; data[idx+1] = g; data[idx+2] = b;
     }
   }
 }
-
-// ── Colour corruption ─────────────────────────────────────────────────────────
-// Organic patch/vignette dissolution. No scratches, no warm paper bias.
-// Fade destination derived from the image's own average tone.
 
 function corruptColour(data, w, h, seed, rng, nfn) {
   const globalDecay   = 0.75 + rng() * 0.25;

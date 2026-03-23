@@ -60,76 +60,155 @@ function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
 // ── Single image corruption ──────────────────────────────────────────────────
 
 function corruptImageData(imgData, w, h, seed) {
-  const rng  = seededRng(seed);
-  const nfn  = makeNoise(rng);
+  const rng = seededRng(seed);
+  const nfn = makeNoise(rng);
 
-  // Radical parameters — decay is aggressive by default
-  const globalDecay = 0.72 + rng() * 0.28;   // always heavy
-  const scaleX      = 1.2 + rng() * 4.0;      // wider range of spatial scale
-  const scaleY      = 1.2 + rng() * 4.0;
-  const lacunarity  = 1.7 + rng() * 0.7;
-  const sepiaBase   = 0.6 + rng() * 0.4;
+  // ── Global parameters ──────────────────────────────────────────────────
+  const globalDecay   = 0.78 + rng() * 0.22;
+  const scaleX        = 1.0 + rng() * 5.0;
+  const scaleY        = 1.0 + rng() * 5.0;
+  const lacunarity    = 1.6 + rng() * 0.8;
+  const paperR        = 218 + rng() * 12;
+  const paperG        = 202 + rng() * 12;
+  const paperB        = 178 + rng() * 12;
+  const vigCx         = 0.2 + rng() * 0.6;
+  const vigCy         = 0.2 + rng() * 0.6;
+  const vigPow        = 0.7 + rng() * 3.0;
+  const vigStr        = 0.9 + rng() * 1.6;
+  const warpS         = 0.4 + rng() * 2.0;
+  const warpA         = 0.1 + rng() * 0.22;
+  const eraseThresh   = 0.22 + rng() * 0.28;
+  const edgeSharpness = 8 + rng() * 22;
 
-  // Paper tone — varies slightly per seed, always warm
-  const paperR = 215 + rng() * 15;
-  const paperG = 200 + rng() * 14;
-  const paperB = 178 + rng() * 14;
-
-  // Vignette — can be extreme
-  const vigCx  = 0.25 + rng() * 0.5;
-  const vigCy  = 0.25 + rng() * 0.5;
-  const vigPow = 0.8 + rng() * 2.5;
-  const vigStr = 0.8 + rng() * 1.4;    // can exceed 1 — forces full erasure at edges
-
-  // Domain warp
-  const warpS = 0.4 + rng() * 1.6;
-  const warpA = 0.08 + rng() * 0.18;
-
-  // Large erasure patches — bigger and more numerous
-  const numP   = 12 + Math.floor(rng() * 24);
+  // ── Emulsion patches ───────────────────────────────────────────────────
+  const numP   = 14 + Math.floor(rng() * 28);
   const patches = Array.from({length: numP}, () => ({
-    cx:    rng(),
-    cy:    rng(),
-    rx:    0.04 + rng() * 0.38,   // up to 38% of image width
-    ry:    0.03 + rng() * 0.28,
-    angle: rng() * Math.PI,
-    str:   0.6 + rng() * 0.4      // always strong
+    cx: rng(), cy: rng(),
+    rx: 0.05 + rng() * 0.42, ry: 0.04 + rng() * 0.32,
+    angle: rng() * Math.PI, str: 0.65 + rng() * 0.35
   }));
-
-  // Mode weights
-  const w0   = 0.25 + rng() * 0.5;
-  const w1   = 0.15 + rng() * 0.5;
-  const w2   = 0.15 + rng() * 0.5;
+  const w0 = 0.25 + rng() * 0.5, w1 = 0.15 + rng() * 0.5, w2 = 0.15 + rng() * 0.5;
   const wSum = w0 + w1 + w2;
 
-  // Erasure threshold — below this the pixel survives, above it gets destroyed
-  // Hard edge sharpness controls how quickly pixels go from intact to gone
-  const eraseThresh = 0.28 + rng() * 0.25;  // lower = more erasure
-  const edgeSharpness = 6 + rng() * 18;      // higher = harder edge
+  // ── Heavy grain field ──────────────────────────────────────────────────
+  const grainAmp     = 40 + rng() * 80;    // much heavier
+  const grainScale   = 0.25 + rng() * 0.6; // spatial frequency of grain
+  const grainTint    = rng() > 0.5;        // sometimes grain has a warm tint
 
-  const grainAmp = 22 + rng() * 50;
+  // ── Silver dots / halide clumping ──────────────────────────────────────
+  // Pre-generate dot field: sparse bright specks scattered across survived areas
+  const numDots      = Math.floor(w * h * (0.0008 + rng() * 0.003));
+  const dots         = Array.from({length: numDots}, () => ({
+    x: Math.floor(rng() * w),
+    y: Math.floor(rng() * h),
+    r: 0.5 + rng() * 3.5,   // radius in pixels
+    v: 180 + rng() * 75      // brightness
+  }));
+  // Rasterise dot field into a lookup map for O(1) per pixel
+  const dotMap = new Float32Array(w * h);
+  for (const d of dots) {
+    const x0 = Math.max(0, Math.floor(d.x - d.r - 1));
+    const x1 = Math.min(w - 1, Math.ceil(d.x + d.r + 1));
+    const y0 = Math.max(0, Math.floor(d.y - d.r - 1));
+    const y1 = Math.min(h - 1, Math.ceil(d.y + d.r + 1));
+    for (let dy = y0; dy <= y1; dy++) {
+      for (let dx = x0; dx <= x1; dx++) {
+        const dist = Math.sqrt((dx - d.x) ** 2 + (dy - d.y) ** 2);
+        if (dist <= d.r) {
+          const t = 1 - dist / d.r;
+          dotMap[dy * w + dx] = Math.max(dotMap[dy * w + dx], t * (d.v / 255));
+        }
+      }
+    }
+  }
 
+  // ── Scratches ──────────────────────────────────────────────────────────
+  // Line scratches: long thin trajectories, can be straight or slightly curved
+  const numScratches = 2 + Math.floor(rng() * 14);
+  const scratches    = Array.from({length: numScratches}, () => {
+    const vertical = rng() > 0.4;  // mostly vertical, like film scratches
+    return {
+      pos:      vertical ? rng() * w : rng() * h,   // x for vertical, y for horizontal
+      vertical,
+      width:    0.5 + rng() * 2.5,
+      bright:   rng() > 0.5,   // bright (overexposed) or dark (underexposed) scratch
+      strength: 0.5 + rng() * 0.5,
+      waver:    rng() * 0.015,  // how much the scratch wavers along its length
+      wavFreq:  2 + rng() * 8,  // frequency of waver
+      start:    rng() * 0.3,    // scratch doesn't always run full length
+      end:      0.7 + rng() * 0.3,
+    };
+  });
+
+  // Rasterise scratches into a map: positive = bright, negative = dark
+  const scratchMap = new Float32Array(w * h);
+  for (const s of scratches) {
+    for (let i = 0; i < (s.vertical ? h : w); i++) {
+      const t = i / (s.vertical ? h : w);
+      if (t < s.start || t > s.end) continue;
+      const waver = Math.sin(t * s.wavFreq * Math.PI * 2) * s.waver * (s.vertical ? w : h);
+      const pos = s.pos + waver;
+      const lo = Math.floor(pos - s.width), hi = Math.ceil(pos + s.width);
+      for (let j = lo; j <= hi; j++) {
+        if (j < 0) continue;
+        const dist = Math.abs(j - pos) / s.width;
+        if (dist > 1) continue;
+        const alpha = (1 - dist * dist) * s.strength;
+        const idx = s.vertical
+          ? clamp(i, 0, h - 1) * w + clamp(j, 0, w - 1)
+          : clamp(j, 0, h - 1) * w + clamp(i, 0, w - 1);
+        scratchMap[idx] = s.bright
+          ? Math.max(scratchMap[idx],  alpha)
+          : Math.min(scratchMap[idx], -alpha);
+      }
+    }
+  }
+
+  // ── Dust / micro-spots ─────────────────────────────────────────────────
+  // Fine black or dark dust specks sitting on the paper surface
+  const numDust  = Math.floor(w * h * (0.001 + rng() * 0.005));
+  const dustMap  = new Float32Array(w * h);
+  const dustSeeds = Array.from({length: numDust}, () => ({
+    x: Math.floor(rng() * w), y: Math.floor(rng() * h),
+    r: 0.3 + rng() * 1.8
+  }));
+  for (const d of dustSeeds) {
+    const x0 = Math.max(0, Math.floor(d.x - d.r - 1));
+    const x1 = Math.min(w - 1, Math.ceil(d.x + d.r + 1));
+    const y0 = Math.max(0, Math.floor(d.y - d.r - 1));
+    const y1 = Math.min(h - 1, Math.ceil(d.y + d.r + 1));
+    for (let dy = y0; dy <= y1; dy++) {
+      for (let dx = x0; dx <= x1; dx++) {
+        const dist = Math.sqrt((dx - d.x) ** 2 + (dy - d.y) ** 2);
+        if (dist <= d.r) dustMap[dy * w + dx] = Math.max(dustMap[dy * w + dx], 1 - dist / d.r);
+      }
+    }
+  }
+
+  // ── Halation bleed ─────────────────────────────────────────────────────
+  // Bright halos around highlight regions — light bleeds through the base
+  // Approximate by boosting bright pixels toward warm overexposed tone
+
+  // ── Pixel loop ─────────────────────────────────────────────────────────
   const data = imgData.data;
 
   for (let py = 0; py < h; py++) {
     const ny = py / h;
     for (let px = 0; px < w; px++) {
-      const nx = px / w;
+      const nx  = px / w;
       const idx = (py * w + px) * 4;
       let r = data[idx], g = data[idx+1], b = data[idx+2];
 
-      // Domain-warped noise
+      // Erasure mask ────────────────────────────────────────────────────
       const wx = fbm(nfn, nx*warpS+3.7, ny*warpS+9.2, 3, lacunarity, rng);
       const wy = fbm(nfn, nx*warpS+1.3, ny*warpS+6.8, 3, lacunarity, rng);
       const n1 = (fbm(nfn, nx*scaleX+wx*warpA*scaleX, ny*scaleY+wy*warpA*scaleY, 7, lacunarity, rng)+1)/2;
       const n2 = (fbm(nfn, nx*scaleX*1.8+41, ny*scaleY*1.8+17, 4, lacunarity, rng)+1)/2;
       const noiseMask = n1*0.6 + n2*0.4;
 
-      // Radial vignette
-      const dx = (nx-vigCx)*1.6, dy = (ny-vigCy)*1.6;
-      const vigMask = clamp(Math.pow(Math.max(0, Math.sqrt(dx*dx+dy*dy)-0.18), vigPow)*vigStr, 0, 1);
+      const dxv = (nx-vigCx)*1.6, dyv = (ny-vigCy)*1.6;
+      const vigMask = clamp(Math.pow(Math.max(0, Math.sqrt(dxv*dxv+dyv*dyv)-0.18), vigPow)*vigStr, 0, 1);
 
-      // Emulsion patches
       let patchMask = 0;
       for (const p of patches) {
         const ca = Math.cos(p.angle), sa = Math.sin(p.angle);
@@ -137,40 +216,77 @@ function corruptImageData(imgData, w, h, seed) {
         const rdy = (nx-p.cx)*sa + (ny-p.cy)*ca;
         const dist = Math.sqrt((rdx/p.rx)**2 + (rdy/p.ry)**2);
         if (dist < 1) {
-          // Use fine noise to give each patch a ragged, organic edge
           const pn = (nfn(px*0.09+p.cx*30, py*0.09+p.cy*30)+1)/2;
-          const edgeRag = 1 - dist * (0.7 + pn * 0.3);
-          patchMask = Math.max(patchMask, edgeRag * p.str);
+          patchMask = Math.max(patchMask, (1 - dist*(0.7+pn*0.3)) * p.str);
         }
       }
 
-      // Composite raw decay value
-      const raw = (noiseMask*w0 + vigMask*w1 + patchMask*w2) / wSum * globalDecay;
-
-      // Hard threshold with steep sigmoid — organic edge, not gradient
-      // Pixels above threshold get destroyed, below survive (with sepia/grain)
-      const normalised = (raw - eraseThresh) * edgeSharpness;
-      const eraseAmt = clamp(1 / (1 + Math.exp(-normalised)), 0, 1);
-
-      // Soft decay for pixels that survive (sepia + slight fade)
+      const raw      = (noiseMask*w0 + vigMask*w1 + patchMask*w2) / wSum * globalDecay;
+      const norm     = (raw - eraseThresh) * edgeSharpness;
+      const eraseAmt = clamp(1 / (1 + Math.exp(-norm)), 0, 1);
+      const survived = 1 - eraseAmt;
       const surviveDecay = clamp(raw / eraseThresh, 0, 1);
-      const localSepia = clamp(sepiaBase * (0.2 + surviveDecay * 0.8), 0, 1);
-      [r, g, b] = toSepia(r, g, b, localSepia);
 
-      // Erasure: hard transition to paper tone
+      // Erase to paper ──────────────────────────────────────────────────
       r = r + (paperR - r) * eraseAmt;
       g = g + (paperG - g) * eraseAmt;
       b = b + (paperB - b) * eraseAmt;
 
-      // Grain concentrated at the erasure boundary (where the image is disappearing)
-      const boundaryZone = eraseAmt * (1 - eraseAmt) * 4;  // peaks at edge
-      const gn = (nfn(px*0.38+(seed&0xff), py*0.38)+1)/2;
-      const grain = (gn-0.5) * grainAmp * (0.05 + surviveDecay*0.3 + boundaryZone*0.8);
-      data[idx]   = clamp(r + grain, 0, 255);
-      data[idx+1] = clamp(g + grain*0.84, 0, 255);
-      data[idx+2] = clamp(b + grain*0.70, 0, 255);
+      // Heavy grain ─────────────────────────────────────────────────────
+      const gn = (nfn(px*grainScale+(seed&0xff), py*grainScale)+1)/2;
+      const boundaryZone = eraseAmt * (1 - eraseAmt) * 4;
+      const grainWeight  = 0.04 + surviveDecay*0.25 + boundaryZone*1.2;
+      const grain = (gn - 0.5) * grainAmp * grainWeight;
+      if (grainTint) {
+        r = clamp(r + grain * 1.1, 0, 255);
+        g = clamp(g + grain * 0.85, 0, 255);
+        b = clamp(b + grain * 0.6,  0, 255);
+      } else {
+        r = clamp(r + grain, 0, 255);
+        g = clamp(g + grain, 0, 255);
+        b = clamp(b + grain, 0, 255);
+      }
+
+      // Silver dots / halide clumping ───────────────────────────────────
+      const dotVal = dotMap[py * w + px];
+      if (dotVal > 0) {
+        // Dots appear more on survived + transitional areas
+        const dotVisibility = survived * 0.5 + boundaryZone * 0.8;
+        const dv = dotVal * dotVisibility;
+        r = clamp(r + (paperR + 20 - r) * dv, 0, 255);
+        g = clamp(g + (paperG + 10 - g) * dv, 0, 255);
+        b = clamp(b + (paperB - 5  - b) * dv, 0, 255);
+      }
+
+      // Scratches ───────────────────────────────────────────────────────
+      const sv = scratchMap[py * w + px];
+      if (sv > 0) {
+        // Bright scratch — overexposed line
+        r = clamp(r + (255 - r) * sv * 0.85, 0, 255);
+        g = clamp(g + (240 - g) * sv * 0.75, 0, 255);
+        b = clamp(b + (200 - b) * sv * 0.6,  0, 255);
+      } else if (sv < 0) {
+        // Dark scratch — mechanical damage
+        const da = -sv;
+        r = clamp(r * (1 - da * 0.9), 0, 255);
+        g = clamp(g * (1 - da * 0.9), 0, 255);
+        b = clamp(b * (1 - da * 0.85), 0, 255);
+      }
+
+      // Dust specks ─────────────────────────────────────────────────────
+      const dv2 = dustMap[py * w + px];
+      if (dv2 > 0) {
+        r = clamp(r * (1 - dv2 * 0.85), 0, 255);
+        g = clamp(g * (1 - dv2 * 0.85), 0, 255);
+        b = clamp(b * (1 - dv2 * 0.80), 0, 255);
+      }
+
+      data[idx]   = r;
+      data[idx+1] = g;
+      data[idx+2] = b;
     }
   }
+
   return imgData;
 }
 

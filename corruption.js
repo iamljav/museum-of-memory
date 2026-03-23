@@ -63,31 +63,51 @@ function corruptImageData(imgData, w, h, seed) {
   const rng  = seededRng(seed);
   const nfn  = makeNoise(rng);
 
-  const globalDecay = 0.55 + rng() * 0.45;
-  const scaleX      = 1.8 + rng() * 3.6;
-  const scaleY      = 1.8 + rng() * 3.6;
+  // Radical parameters — decay is aggressive by default
+  const globalDecay = 0.72 + rng() * 0.28;   // always heavy
+  const scaleX      = 1.2 + rng() * 4.0;      // wider range of spatial scale
+  const scaleY      = 1.2 + rng() * 4.0;
   const lacunarity  = 1.7 + rng() * 0.7;
-  const sepiaBase   = 0.55 + rng() * 0.45;
-  const paperR      = 200 + rng() * 18;
-  const paperG      = 188 + rng() * 16;
-  const paperB      = 168 + rng() * 16;
-  const vigCx       = 0.3 + rng() * 0.4;
-  const vigCy       = 0.3 + rng() * 0.4;
-  const vigPow      = 1.0 + rng() * 2.2;
-  const vigStr      = 0.5 + rng() * 0.9;
-  const warpS       = 0.3 + rng() * 1.2;
-  const warpA       = 0.06 + rng() * 0.14;
-  const numP        = 8 + Math.floor(rng() * 20);
-  const patches     = Array.from({length: numP}, () => ({
-    cx: rng(), cy: rng(),
-    rx: 0.02 + rng() * 0.28, ry: 0.015 + rng() * 0.18,
-    angle: rng() * Math.PI, str: 0.4 + rng() * 0.6
+  const sepiaBase   = 0.6 + rng() * 0.4;
+
+  // Paper tone — varies slightly per seed, always warm
+  const paperR = 215 + rng() * 15;
+  const paperG = 200 + rng() * 14;
+  const paperB = 178 + rng() * 14;
+
+  // Vignette — can be extreme
+  const vigCx  = 0.25 + rng() * 0.5;
+  const vigCy  = 0.25 + rng() * 0.5;
+  const vigPow = 0.8 + rng() * 2.5;
+  const vigStr = 0.8 + rng() * 1.4;    // can exceed 1 — forces full erasure at edges
+
+  // Domain warp
+  const warpS = 0.4 + rng() * 1.6;
+  const warpA = 0.08 + rng() * 0.18;
+
+  // Large erasure patches — bigger and more numerous
+  const numP   = 12 + Math.floor(rng() * 24);
+  const patches = Array.from({length: numP}, () => ({
+    cx:    rng(),
+    cy:    rng(),
+    rx:    0.04 + rng() * 0.38,   // up to 38% of image width
+    ry:    0.03 + rng() * 0.28,
+    angle: rng() * Math.PI,
+    str:   0.6 + rng() * 0.4      // always strong
   }));
-  const w0       = 0.2 + rng() * 0.6;
-  const w1       = 0.1 + rng() * 0.5;
-  const w2       = 0.1 + rng() * 0.5;
-  const wSum     = w0 + w1 + w2;
-  const grainAmp = 18 + rng() * 40;
+
+  // Mode weights
+  const w0   = 0.25 + rng() * 0.5;
+  const w1   = 0.15 + rng() * 0.5;
+  const w2   = 0.15 + rng() * 0.5;
+  const wSum = w0 + w1 + w2;
+
+  // Erasure threshold — below this the pixel survives, above it gets destroyed
+  // Hard edge sharpness controls how quickly pixels go from intact to gone
+  const eraseThresh = 0.28 + rng() * 0.25;  // lower = more erasure
+  const edgeSharpness = 6 + rng() * 18;      // higher = harder edge
+
+  const grainAmp = 22 + rng() * 50;
 
   const data = imgData.data;
 
@@ -98,15 +118,18 @@ function corruptImageData(imgData, w, h, seed) {
       const idx = (py * w + px) * 4;
       let r = data[idx], g = data[idx+1], b = data[idx+2];
 
+      // Domain-warped noise
       const wx = fbm(nfn, nx*warpS+3.7, ny*warpS+9.2, 3, lacunarity, rng);
       const wy = fbm(nfn, nx*warpS+1.3, ny*warpS+6.8, 3, lacunarity, rng);
       const n1 = (fbm(nfn, nx*scaleX+wx*warpA*scaleX, ny*scaleY+wy*warpA*scaleY, 7, lacunarity, rng)+1)/2;
       const n2 = (fbm(nfn, nx*scaleX*1.8+41, ny*scaleY*1.8+17, 4, lacunarity, rng)+1)/2;
       const noiseMask = n1*0.6 + n2*0.4;
 
+      // Radial vignette
       const dx = (nx-vigCx)*1.6, dy = (ny-vigCy)*1.6;
-      const vigMask = clamp(Math.pow(Math.max(0, Math.sqrt(dx*dx+dy*dy)-0.22), vigPow)*vigStr, 0, 1);
+      const vigMask = clamp(Math.pow(Math.max(0, Math.sqrt(dx*dx+dy*dy)-0.18), vigPow)*vigStr, 0, 1);
 
+      // Emulsion patches
       let patchMask = 0;
       for (const p of patches) {
         const ca = Math.cos(p.angle), sa = Math.sin(p.angle);
@@ -114,30 +137,38 @@ function corruptImageData(imgData, w, h, seed) {
         const rdy = (nx-p.cx)*sa + (ny-p.cy)*ca;
         const dist = Math.sqrt((rdx/p.rx)**2 + (rdy/p.ry)**2);
         if (dist < 1) {
-          const pn = (nfn(px*0.06+p.cx*25, py*0.06+p.cy*25)+1)/2;
-          patchMask = Math.max(patchMask, (1-dist*dist)*p.str*(0.4+pn*0.6));
+          // Use fine noise to give each patch a ragged, organic edge
+          const pn = (nfn(px*0.09+p.cx*30, py*0.09+p.cy*30)+1)/2;
+          const edgeRag = 1 - dist * (0.7 + pn * 0.3);
+          patchMask = Math.max(patchMask, edgeRag * p.str);
         }
       }
 
-      const raw = (noiseMask*w0 + vigMask*w1 + patchMask*w2) / wSum;
-      const decayAmt = clamp(raw * globalDecay * 1.5, 0, 1);
+      // Composite raw decay value
+      const raw = (noiseMask*w0 + vigMask*w1 + patchMask*w2) / wSum * globalDecay;
 
-      const localSepia = clamp(sepiaBase*(0.3 + decayAmt*1.1), 0, 1);
+      // Hard threshold with steep sigmoid — organic edge, not gradient
+      // Pixels above threshold get destroyed, below survive (with sepia/grain)
+      const normalised = (raw - eraseThresh) * edgeSharpness;
+      const eraseAmt = clamp(1 / (1 + Math.exp(-normalised)), 0, 1);
+
+      // Soft decay for pixels that survive (sepia + slight fade)
+      const surviveDecay = clamp(raw / eraseThresh, 0, 1);
+      const localSepia = clamp(sepiaBase * (0.2 + surviveDecay * 0.8), 0, 1);
       [r, g, b] = toSepia(r, g, b, localSepia);
 
-      const fadeThresh = 0.38;
-      if (decayAmt > fadeThresh) {
-        const t = smoothstep((decayAmt - fadeThresh) / (1 - fadeThresh));
-        r = r + (paperR - r) * t;
-        g = g + (paperG - g) * t;
-        b = b + (paperB - b) * t;
-      }
+      // Erasure: hard transition to paper tone
+      r = r + (paperR - r) * eraseAmt;
+      g = g + (paperG - g) * eraseAmt;
+      b = b + (paperB - b) * eraseAmt;
 
-      const gn = (nfn(px*0.35+(seed&0xff), py*0.35)+1)/2;
-      const grain = (gn-0.5) * grainAmp * (0.1 + decayAmt*0.9);
+      // Grain concentrated at the erasure boundary (where the image is disappearing)
+      const boundaryZone = eraseAmt * (1 - eraseAmt) * 4;  // peaks at edge
+      const gn = (nfn(px*0.38+(seed&0xff), py*0.38)+1)/2;
+      const grain = (gn-0.5) * grainAmp * (0.05 + surviveDecay*0.3 + boundaryZone*0.8);
       data[idx]   = clamp(r + grain, 0, 255);
-      data[idx+1] = clamp(g + grain*0.86, 0, 255);
-      data[idx+2] = clamp(b + grain*0.72, 0, 255);
+      data[idx+1] = clamp(g + grain*0.84, 0, 255);
+      data[idx+2] = clamp(b + grain*0.70, 0, 255);
     }
   }
   return imgData;

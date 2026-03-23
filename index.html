@@ -6,113 +6,146 @@
   <title>The Museum of Memory</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;1,400&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
 </head>
 <body>
 
   <div class="grain"></div>
 
   <header>
-    <div class="header-rule"></div>
+    <div class="rule"></div>
     <div class="header-inner">
-      <span class="header-tag">Est. 2025</span>
-      <div class="header-title-block">
+      <span class="tag">Est. 2025</span>
+      <div class="title-block">
         <h1>The Museum of Memory</h1>
-        <p class="subtitle">every photograph forgets differently</p>
+        <p class="subtitle"><em>every photograph forgets differently</em></p>
       </div>
-      <span class="header-tag">Permanent Collection</span>
+      <span class="tag">Permanent Collection</span>
     </div>
-    <div class="header-rule"></div>
+    <div class="rule"></div>
   </header>
 
   <main>
-    <section class="upload-section" id="upload-section">
-      <div class="upload-zone" id="upload-zone">
+
+    <!-- ── Step 1: choose mode ── -->
+    <section id="mode-section">
+      <p class="section-label">Begin</p>
+      <div class="mode-cards">
+
+        <div class="mode-card" id="mode-single">
+          <div class="mode-card-inner">
+            <div class="mode-icon">
+              <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="10" width="32" height="28" rx="1" stroke="currentColor" stroke-width="0.8"/><circle cx="18" cy="22" r="4" stroke="currentColor" stroke-width="0.8"/><path d="M8 32L18 23L26 30L33 22L40 32" stroke="currentColor" stroke-width="0.8" stroke-linejoin="round"/></svg>
+            </div>
+            <p class="mode-name">Single exposure</p>
+            <p class="mode-desc">one photograph, corrupted</p>
+          </div>
+        </div>
+
+        <div class="mode-divider">·</div>
+
+        <div class="mode-card" id="mode-double">
+          <div class="mode-card-inner">
+            <div class="mode-icon mode-icon-double">
+              <svg viewBox="0 0 48 48" fill="none"><rect x="4" y="10" width="32" height="28" rx="1" stroke="currentColor" stroke-width="0.8" opacity="0.5"/><rect x="12" y="14" width="32" height="28" rx="1" stroke="currentColor" stroke-width="0.8"/><circle cx="26" cy="26" r="4" stroke="currentColor" stroke-width="0.8"/></svg>
+            </div>
+            <p class="mode-name">Double exposure</p>
+            <p class="mode-desc">two memories, one surface</p>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── Step 2a: single upload ── -->
+    <section id="single-section" style="display:none">
+      <p class="section-label">Deposit a photograph</p>
+      <div class="upload-zone" id="single-zone">
+        <input type="file" id="single-input" accept="image/*">
         <div class="upload-inner">
           <div class="upload-icon">
-            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="5" y="8" width="30" height="24" rx="1" stroke="currentColor" stroke-width="0.75"/>
-              <circle cx="14" cy="17" r="3" stroke="currentColor" stroke-width="0.75"/>
-              <path d="M5 26L14 19L20 24L27 17L35 26" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/>
-            </svg>
+            <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="1" stroke="currentColor" stroke-width="0.75"/><circle cx="17" cy="21" r="4" stroke="currentColor" stroke-width="0.75"/><path d="M6 31L17 22L25 29L33 20L42 31" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/></svg>
           </div>
-          <p class="upload-text">Deposit a photograph</p>
-          <p class="upload-sub">drag & drop or click to browse</p>
+          <p class="upload-label">drag & drop · click to browse</p>
           <p class="upload-formats">jpg · png · webp</p>
         </div>
-        <input type="file" id="file-input" accept="image/*">
+      </div>
+      <button class="btn btn-back" id="single-back">← back</button>
+    </section>
+
+    <!-- ── Step 2b: double upload ── -->
+    <section id="double-section" style="display:none">
+      <p class="section-label">Deposit two photographs</p>
+      <div class="double-slots">
+
+        <div class="slot" id="slot-a">
+          <div class="upload-zone upload-zone-sm" id="zone-a">
+            <input type="file" id="input-a" accept="image/*">
+            <div class="upload-inner">
+              <div class="upload-icon">
+                <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="1" stroke="currentColor" stroke-width="0.75"/><circle cx="17" cy="21" r="4" stroke="currentColor" stroke-width="0.75"/><path d="M6 31L17 22L25 29L33 20L42 31" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/></svg>
+              </div>
+              <p class="upload-label">first photograph</p>
+              <p class="upload-formats">jpg · png · webp</p>
+            </div>
+          </div>
+          <div class="slot-thumb" id="thumb-a" style="display:none">
+            <img id="thumb-img-a" alt="">
+            <button class="slot-clear" id="clear-a">×</button>
+          </div>
+        </div>
+
+        <div class="slot-plus">+</div>
+
+        <div class="slot" id="slot-b">
+          <div class="upload-zone upload-zone-sm" id="zone-b">
+            <input type="file" id="input-b" accept="image/*">
+            <div class="upload-inner">
+              <div class="upload-icon">
+                <svg viewBox="0 0 48 48" fill="none"><rect x="6" y="10" width="36" height="28" rx="1" stroke="currentColor" stroke-width="0.75"/><circle cx="17" cy="21" r="4" stroke="currentColor" stroke-width="0.75"/><path d="M6 31L17 22L25 29L33 20L42 31" stroke="currentColor" stroke-width="0.75" stroke-linejoin="round"/></svg>
+              </div>
+              <p class="upload-label">second photograph</p>
+              <p class="upload-formats">jpg · png · webp</p>
+            </div>
+          </div>
+          <div class="slot-thumb" id="thumb-b" style="display:none">
+            <img id="thumb-img-b" alt="">
+            <button class="slot-clear" id="clear-b">×</button>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="double-actions">
+        <button class="btn btn-back" id="double-back">← back</button>
+        <button class="btn btn-develop" id="develop-btn" disabled>develop →</button>
       </div>
     </section>
 
-    <section class="studio-section" id="studio-section" style="display:none">
-
+    <!-- ── Result ── -->
+    <section id="result-section" style="display:none">
       <div class="canvas-frame">
-        <div class="frame-corner tl"></div>
-        <div class="frame-corner tr"></div>
-        <div class="frame-corner bl"></div>
-        <div class="frame-corner br"></div>
-        <div class="canvas-wrap" id="canvas-wrap">
-          <canvas id="result-canvas"></canvas>
-          <div class="processing-overlay" id="processing-overlay">
-            <span>developing…</span>
-          </div>
-        </div>
-        <div class="canvas-meta">
-          <span class="seed-display" id="seed-display"></span>
-          <span class="dimensions-display" id="dimensions-display"></span>
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+        <canvas id="canvas"></canvas>
+        <div class="developing" id="developing">
+          <span id="developing-text">developing…</span>
         </div>
       </div>
-
-      <div class="controls-panel">
-        <div class="control-group">
-          <label class="control-label">Decay intensity</label>
-          <div class="slider-row">
-            <input type="range" id="decay-slider" min="0" max="100" value="45">
-            <span class="slider-val" id="decay-val">45%</span>
-          </div>
-        </div>
-
-        <div class="control-group">
-          <label class="control-label">Character of forgetting</label>
-          <div class="mode-grid">
-            <button class="mode-btn active" data-mode="organic">Organic fade</button>
-            <button class="mode-btn" data-mode="bleed">Edge bleed</button>
-            <button class="mode-btn" data-mode="lifting">Emulsion lift</button>
-            <button class="mode-btn" data-mode="bleach">Bleach bypass</button>
-            <button class="mode-btn" data-mode="mixed">All forces</button>
-          </div>
-        </div>
-
-        <div class="control-group">
-          <label class="control-label">Sepia drift</label>
-          <div class="slider-row">
-            <input type="range" id="sepia-slider" min="0" max="100" value="70">
-            <span class="slider-val" id="sepia-val">70%</span>
-          </div>
-        </div>
-
-        <div class="action-row">
-          <button class="action-btn" id="randomize-btn">
-            <span>New seed</span>
-            <svg viewBox="0 0 16 16" fill="none"><path d="M2 8C2 4.686 4.686 2 8 2s6 2.686 6 6-2.686 6-6 6S2 11.314 2 8z" stroke="currentColor" stroke-width="0.75"/><path d="M8 5v3l2 1" stroke="currentColor" stroke-width="0.75" stroke-linecap="round"/></svg>
-          </button>
-          <button class="action-btn" id="upload-another-btn">
-            <span>New photo</span>
-            <svg viewBox="0 0 16 16" fill="none"><path d="M3 10V12h10V10M8 3v6M5 6l3-3 3 3" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
-          <button class="action-btn primary" id="download-btn">
-            <span>Save</span>
-            <svg viewBox="0 0 16 16" fill="none"><path d="M3 10V13h10V10M8 3v7M5 8l3 3 3-3" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          </button>
+      <div class="result-footer">
+        <span class="seed-tag" id="seed-tag"></span>
+        <div class="result-actions">
+          <button id="another-btn" class="btn">another photograph</button>
+          <button id="save-btn" class="btn btn-save">save this memory</button>
         </div>
       </div>
-
     </section>
+
   </main>
 
   <footer>
-    <div class="footer-rule"></div>
-    <p>The Museum of Memory — an archive of impermanence</p>
+    <div class="rule"></div>
+    <p class="footer-note">an archive of impermanence</p>
   </footer>
 
   <script src="corruption.js"></script>
